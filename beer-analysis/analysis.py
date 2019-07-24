@@ -83,3 +83,35 @@ perceptron.fit(trainX, trainY)
 print("Perceptron Train:", perceptron.score(trainX, trainY))
 print("Perceptron Dev:", perceptron.score(devX, devY))
 print("---")
+
+print("Interpretando o Logistic Regression")
+for label in range(3):
+    coefs = lr.coef_[label]
+    vocab = np.array(countVec.get_feature_names())
+    num_features = 10
+
+    top = np.argpartition(coefs, -num_features)[-num_features:]
+    # Ordena
+    top = top[np.argsort(coefs[top])]
+    s_coef = coefs[top]
+    scored_vocab = list(zip(vocab[top], s_coef))
+    print("Features mais preponderantes para a label: {}:\n \n {}\n --- \n".format(label, scored_vocab))
+
+# Coleta todos os exemplos que deram errado
+devPred = lr.predict(devX)
+errors = []
+for indx in range(len(devText)):
+    if devPred[indx] != devY[indx]:
+        error = "Review: \n {} Previsto: {} \n Correto: {} \n ---".format(
+                devText[indx],
+                devPred[indx],
+                devY[indx])
+        errors.append(error)
+
+# Mostra alguns exemplos
+np.random.seed(2)
+print("Erro aleatório no set de desenvolvimento: \n {} \n \n {} \n \n {}".format(
+    np.random.choice(errors, 1),
+    np.random.choice(errors, 1),
+    np.random.choice(errors, 1))
+    )
