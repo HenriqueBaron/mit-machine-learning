@@ -1,0 +1,234 @@
+---
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.1'
+      jupytext_version: 1.2.1
+  kernelspec:
+    display_name: Python 3
+    language: python
+    name: python3
+---
+
+```{python}
+# %autosave 0
+import pickle
+import re
+from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import Perceptron
+from sklearn.linear_model import PassiveAggressiveClassifier
+from sklearn.feature_extraction.text import CountVectorizer
+import numpy as np
+import warnings
+warnings.filterwarnings("ignore")
+```
+
+# Obtenção e preparação dos dados
+
+```{python}
+# Define os data sets e o caminho
+train_path = "data/overall_train.p"
+dev_path = "data/overall_dev.p"
+test_path = "data/overall_test.p"
+train_set = pickle.load(open(train_path, 'rb'))
+dev_set = pickle.load(open(dev_path, 'rb'))
+test_set = pickle.load(open(test_path, 'rb'))
+```
+
+```{python}
+# Pré-processamento: transforma todos os caracteres em letra minúscula
+def preprocess_data(data):
+    for indx, sample in enumerate(data):
+        text, label = sample['text'], sample['y']
+        text = re.sub('\W+', ' ', text).lower().strip()
+        data[indx] = text, label
+    return data
+
+train_set = preprocess_data(train_set)
+dev_set = preprocess_data(dev_set)
+test_set = preprocess_data(test_set)
+```
+
+```{python}
+print('Quantidade de dados de treino: {}'.format(len(train_set)))
+print('Quantidade de dados de dev: {}'.format(len(dev_set)))
+print('Quantidade de dados de teste: {}'.format(len(test_set)))
+print('Reviews de exemplo:\ntrain_set[0]\ntrain_set[1]')
+```
+
+# Criação dos vetores de _features_ 
+
+```{python}
+# Separa as reviews e labels em duas listas
+train_text = [t[0] for t in train_set]
+train_y = [t[1] for t in train_set]
+
+dev_text = [t[0] for t in dev_set]
+dev_y = [t[1] for t in dev_set]
+
+test_text = [t[0] for t in test_set]
+test_y = [t[1] for t in test_set]
+
+# Obtém as top 1000 palavras que apareceram mais do que 5 vezes
+max_features = 1000
+min_df = 5
+count_vec = CountVectorizer(min_df= min_df, max_features= max_features)
+
+# Aprende o vocabulário a partir do texto
+count_vec.fit(train_text)
+
+# Transforma a lista de reviews em uma matriz de vetores bag-of-words
+train_x = count_vec.transform(train_text)
+dev_x = count_vec.transform(dev_text)
+test_x = count_vec.transform(test_text)
+```
+
+```{python}
+print('Forma da matriz X de treino: {}\n'.format(train_x.shape))
+print('Amostra do vocabulário:\n {}'.format(np.random.choice(count_vec.get_feature_names(),20)))
+```
+
+# Aplicação de um modelo
+
+```{python}
+# Criação dos modelos a ajustar
+lr = LogisticRegression()
+pass_agg = PassiveAggressiveClassifier()
+perceptron = Perceptron()
+```
+
+```{python}
+lr.fit(train_x, train_y)
+print('Logistic Regression Train: ', lr.score(train_x, train_y))
+print('Logistic Regression Dev: ', lr.score(dev_x, dev_y))
+```
+
+```{python}
+pass_agg.fit(train_x, train_y)
+print('Passive Aggressive Train: ', pass_agg.score(train_x, train_y))
+print('Passive Aggressive Dev: ', pass_agg.score(dev_x, dev_y))
+```
+
+```{python}
+perceptron.fit(train_x, train_y)
+print('Perceptron Train: ', perceptron.score(train_x, train_y))
+print('Perceptron Dev: ', perceptron.score(dev_x, dev_y))
+```
+
+# Análise e debug do modelo
+
+```{python}
+print('Interpretando a Logistic Regression')
+for label in range(3):
+    coefs = lr.coef_[label]
+    vocab = np.array(count_vec.get_feature_names())
+    num_features = 10
+    
+    top = np.argpartition(coefs, -num_features)[-num_features:]
+    # Classifica em ordem crescente
+    top = top[np.argsort(coefs[top])]
+    s_coef = coefs[top]
+    scored_vocab = list(zip(vocab[top], s_coef))
+    print('Features mais "pesadas" para a label {}:\n\n{}\n -- \n'.format(label, scored_vocab))
+```
+
+```{python}
+# Coleta todos os exemplos que deram errado
+dev_pred = lr.predict(dev_x)
+errors = []
+for indx in range(len(dev_text)):
+    if dev_pred[indx] != dev_y[indx]:
+        error = 'Review:\n{}\nPPredito: {}\nCorreto: {}\n---'.format(
+            dev_text[indx],
+            dev_pred[indx],
+            dev_y[indx])
+        errors.append(error)
+
+# Mostra alguns exemplos de erro
+np.random.seed(2)
+print('Erro aleatório no set de dev:\n{}\n\n{}\n\n{}'.format(
+    np.random.choice(errors, 1),
+    np.random.choice(errors, 1),
+    np.random.choice(errors, 1)))
+```
+
+# Testando regularização
+O `LogisticRegression` pode ser inicializado com um parâmetro `C` que define o _custo de regularização_ do modelo.
+Quanto mais baixo for este valor, mais forte é o custo.
+
+```{python}
+lr = LogisticRegression(C=.5)
+
+lr.fit(train_x, train_y)
+print('Logistic Regression Train: ', lr.score(train_x, train_y))
+print('Logistic Regression Dev: ', lr.score(dev_x, dev_y))
+```
+
+```{python}
+lr = LogisticRegression(C=.1)
+
+lr.fit(train_x, train_y)
+print('Logistic Regression Train: ', lr.score(train_x, train_y))
+print('Logistic Regression Dev: ', lr.score(dev_x, dev_y))
+```
+
+```{python}
+lr = LogisticRegression(C=.01)
+
+lr.fit(train_x, train_y)
+print('Logistic Regression Train: ', lr.score(train_x, train_y))
+print('Logistic Regression Dev: ', lr.score(dev_x, dev_y))
+```
+
+# Adicionando _n-gramas_
+Até o momento, o modelo não consegue distinguir a diferença entre _great flavor and too bad there isn't more_ e _bad flavor and too great there isn't more_.
+Os _n-gramas_ (bigramas para duas palavras, trigramas para três etc.) são combinações de palavras que ajudam a resolver estes problemas de ordem entre elas.
+
+```{python}
+# Define que a palavra tem que aparecer pelo menos 5 vezes para entrar para o vocabulário
+min_df = 5
+ngram_range = (1,3)
+max_features = 5000
+count_vec_ngram = CountVectorizer(min_df= min_df, ngram_range= ngram_range,
+                                 max_features= max_features)
+# Aprende o vocabulário do set de treinamento
+count_vec_ngram.fit(train_text)
+
+# Transforma a lista de reviews em uma matrix de vetores bag-of-words
+train_x_ngram = count_vec_ngram.transform(train_text)
+dev_x_ngram = count_vec_ngram.transform(dev_text)
+test_x_ngram = count_vec_ngram.transform(test_text)
+```
+
+```{python}
+lr_ngram = LogisticRegression(C=1)
+lr_ngram.fit(train_x_ngram, train_y)
+print('Logistic Regression Train: ', lr_ngram.score(train_x_ngram, train_y))
+print('Logistic Regression Dev: ', lr_ngram.score(dev_x_ngram, dev_y))
+print('--')
+
+lr_ngram = LogisticRegression(C=.5)
+lr_ngram.fit(train_x_ngram, train_y)
+print('Logistic Regression Train: ', lr_ngram.score(train_x_ngram, train_y))
+print('Logistic Regression Dev: ', lr_ngram.score(dev_x_ngram, dev_y))
+print('--')
+
+lr_ngram = LogisticRegression(C=.1)
+lr_ngram.fit(train_x_ngram, train_y)
+print('Logistic Regression Train: ', lr_ngram.score(train_x_ngram, train_y))
+print('Logistic Regression Dev: ', lr_ngram.score(dev_x_ngram, dev_y))
+print('--')
+
+lr_ngram = LogisticRegression(C=.01)
+lr_ngram.fit(train_x_ngram, train_y)
+print('Logistic Regression Train: ', lr_ngram.score(train_x_ngram, train_y))
+print('Logistic Regression Dev: ', lr_ngram.score(dev_x_ngram, dev_y))
+print('--')
+```
+
+```{python}
+# Pega o melhor modelo, aplica no set de teste e verifica os resultados
+print('Logistic Regression Test: ', lr_ngram.score(test_x_ngram, test_y))
+```
